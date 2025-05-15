@@ -10,7 +10,7 @@ For using the Retrieval-based-Voice-Conversion-WebUI on Mac. Temporary fix for t
 brew install python@3.10
 brew install ffmpeg
 brew install aria2
-git clone https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI.git
+git clone https://github.com/HighDoping/Retrieval-based-Voice-Conversion-WebUI.git
 cd Retrieval-based-Voice-Conversion-WebUI
 ```
 
