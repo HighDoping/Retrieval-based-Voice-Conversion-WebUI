@@ -1,6 +1,6 @@
+import logging
 import os
 import sys
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +22,10 @@ try:
     import intel_extension_for_pytorch as ipex  # pylint: disable=import-error, unused-import
 
     if torch.xpu.is_available():
+        from torch.xpu.amp import autocast
+
         from infer.modules.ipex import ipex_init
         from infer.modules.ipex.gradscaler import gradscaler_init
-        from torch.xpu.amp import autocast
 
         GradScaler = gradscaler_init()
         ipex_init()
@@ -62,9 +63,13 @@ if hps.version == "v1":
     )
 else:
     from infer.lib.infer_pack.models import (
-        SynthesizerTrnMs768NSFsid as RVC_Model_f0,
-        SynthesizerTrnMs768NSFsid_nono as RVC_Model_nof0,
         MultiPeriodDiscriminatorV2 as MultiPeriodDiscriminator,
+    )
+    from infer.lib.infer_pack.models import (
+        SynthesizerTrnMs768NSFsid as RVC_Model_f0,
+    )
+    from infer.lib.infer_pack.models import (
+        SynthesizerTrnMs768NSFsid_nono as RVC_Model_nof0,
     )
 
 from infer.lib.train.losses import (
@@ -77,6 +82,16 @@ from infer.lib.train.mel_processing import mel_spectrogram_torch, spec_to_mel_to
 from infer.lib.train.process_ckpt import savee
 
 global_step = 0
+
+import gc
+
+
+def clear_cache():
+    gc.collect()
+    if torch.backends.mps.is_built():
+        torch.mps.empty_cache()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
 
 class EpochRecorder:
@@ -307,9 +322,12 @@ def train_and_evaluate(
 
     train_loader.batch_sampler.set_epoch(epoch)
     global global_step
-
-    net_g.train()
-    net_d.train()
+    mps_device = torch.device("mps")
+    net_g.to(mps_device).train()
+    net_d.to(mps_device).train()
+    # optim_d.to(mps_device)
+    # optim_g.to(mps_device)
+    # scaler.to(mps_device)
 
     # Prepare data iterator
     if hps.if_cache_data_in_gpu == True:
@@ -396,6 +414,7 @@ def train_and_evaluate(
     # Run steps
     epoch_recorder = EpochRecorder()
     for batch_idx, info in data_iterator:
+        clear_cache()
         # Data
         ## Unpack
         if hps.if_f0 == 1:
@@ -413,6 +432,7 @@ def train_and_evaluate(
         else:
             phone, phone_lengths, spec, spec_lengths, wave, wave_lengths, sid = info
         ## Load on CUDA
+
         if (hps.if_cache_data_in_gpu == False) and torch.cuda.is_available():
             phone = phone.cuda(rank, non_blocking=True)
             phone_lengths = phone_lengths.cuda(rank, non_blocking=True)
@@ -424,6 +444,16 @@ def train_and_evaluate(
             spec_lengths = spec_lengths.cuda(rank, non_blocking=True)
             wave = wave.cuda(rank, non_blocking=True)
             # wave_lengths = wave_lengths.cuda(rank, non_blocking=True)
+        else:
+            phone = phone.to(mps_device)
+            phone_lengths = phone_lengths.to(mps_device)
+            if hps.if_f0 == 1:
+                pitch = pitch.to(mps_device)
+                pitchf = pitchf.to(mps_device)
+            sid = sid.to(mps_device)
+            spec = spec.to(mps_device)
+            spec_lengths = spec_lengths.to(mps_device)
+            wave = wave.to(mps_device)
 
         # Calculate
         with autocast(enabled=hps.train.fp16_run):
