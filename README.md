@@ -14,8 +14,6 @@ git clone https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI.
 cd Retrieval-based-Voice-Conversion-WebUI
 ```
 
-Replace the pyproject.toml file with the one in the attachment.
-
 Install the dependencies and download the models:
 
 ```bash
